@@ -505,9 +505,6 @@ wrangler tail | grep "失败"
 ### 更多帮助
 
 - 📄 [完整部署指南](./DEPLOYMENT.md)
-- 🔧 [故障排查文档](./TROUBLESHOOTING.md)
-- 📝 [开发进度记录](./PROGRESS.md)
-- 💡 [修复总结文档](./FIX-SUMMARY.md)
 
 ---
 
@@ -578,6 +575,7 @@ wrangler tail | grep "失败"
 
 ## 🙏 致谢
 
+- [ypq123456789/domainkeeper](https://github.com/ypq123456789/domainkeeper) - 域名可视化展示面板（本项目修改自 **domainkeeper** ）
 - [Cloudflare Workers](https://workers.cloudflare.com/) - 强大的 Edge Computing 平台
 - [next-whois](https://github.com/zmh-program/next-whois) - WHOIS 查询代理服务
 - 所有贡献者和用户的支持
