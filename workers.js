@@ -1,53 +1,348 @@
 //第一部分：配置和基础函数（改进版）
 // 版本和配置信息
 const CONFIG = {
-  VERSION: "3.0.0",
-  TITLE: "NieGe Domain List", 
-  WHOIS_PROXY: "https://who.nie.ge",
+  VERSION: "1.0.0",
+  TITLE: "Domain Manager",
+  WHOIS_PROXY: "https://who.nie.ge", // 默认值,可通过环境变量 WHOIS_PROXY 覆盖
   CACHE_TTL: 7 * 24 * 60 * 60 * 1000, // 7天
   MAX_RETRIES: 3,
   BATCH_SIZE: 5,
   TIMEOUT: 30000
 };
 
-// 在这里设置你的多个 Cloudflare API Token
-const CF_API_KEYS = [
-  "Ux7irk0YSzDxqaUAWLvZIadXxAAv0dQf3Zh2eRVO",//love2wind
-  "5FkecSbyeKzastl9BaYmjzhUi2EuUxPhG0f31Mme", //huayuworld
-  "hnyx2PzbrWInwte95okZIYE8CMliGvIp6hu7Y5d0",//niege365
-  "k9cPXN71eL5Jpkv376vfVEcyjQMadOuhB-Nx1cFe",//agreksandoval
-  "vDGazU-v0sAr7Isze5Z84PB5f4emxgXKvnZfFUH_", //thiengiange468378@gmail.com
-  "YXBKHWcCgoGKwnq3Vo_8_e45zbvCzM5Fe7ZOMyRe", //oraclevps520@gmail.com
-  "GUgetujLEfprN1ChSqhhrVHgQEkA0YWAqWseBrYA", //iouvps@gmail.com
-  "ojT_fRyd8QxjPSSZSlegM5G0cCSx5Xs7wM420T24", //17shua8
-  "zqS2LvJWLnQCyAVUMfTSQ1GOGCuB16mqPVoTUE4M"//iouedumail
+// ⚠️ 安全警告: 请使用环境变量而不是硬编码敏感信息!
+//
+// 配置方法:
+// 1. 在 wrangler.toml 中设置:
+//    [vars]
+//    CF_API_KEYS = '["your_key1","your_key2"]'
+//    USERNAMES = '["user1","user2"]'
+//    ACCESS_PASSWORD = 'your_access_password'
+//
+// 2. 或使用 wrangler secret 命令设置敏感信息:
+//    wrangler secret put ADMIN_PASSWORD
+//    wrangler secret put CF_API_KEYS
+//
+// 3. 在代码中通过 env 对象访问
+//
+// ⚠️ 以下硬编码配置仅作为fallback,生产环境必须使用环境变量!
+
+// Cloudflare API Token数组 (生产环境请使用 env.CF_API_KEYS)
+const CF_API_KEYS_FALLBACK = [
+  "XXXXXX",//cloudflare apikey1
+  "XXXXXX", //cloudflare apikey2
+  "XXXXXX",//cloudflare apikey3
+  "XXXXXX",//cloudflare apikey4
+  "XXXXXX", //cloudflare apikey5
+  "XXXXXX",//cloudflare apikey6
+  "XXXXXX",//cloudflare apikey7
+  "XXXXXX",//cloudflare apikey8
+  "XXXXXX"//cloudflare apikey9
 ];
 
-// 对应的用户名数组
-const USERNAMES = [
-  "love2wind",//love2wind
-  "huayuworld", // username1
-  "niege365",//niege365
-  "agreksandoval",//agreksandoval
-  "thiengiange", // username1
-  "oraclevps", // username2
-  "iouvps", //
-  "17shua8",
-  "iouedumail"
+// 对应的用户名数组 (生产环境请使用 env.USERNAMES)
+const USERNAMES_FALLBACK = [
+  "cloudflare username1",//cloudflare username1
+  "cloudflare username2", // cloudflare username2
+  "cloudflare username3",//cloudflare username3
+  "cloudflare username4",//cloudflare username4
+  "cloudflare username5", // cloudflare username5
+  "cloudflare username6",//cloudflare username6
+  "cloudflare username7",//cloudflare username7
+  "cloudflare username8",//cloudflare username8
+  "cloudflare username9"//cloudflare username9
 ];
 
-// 访问密码（可为空）
-const ACCESS_PASSWORD = "lgd123456";
+// 访问密码(可为空) (生产环境请使用 env.ACCESS_PASSWORD)
+const ACCESS_PASSWORD_FALLBACK = "XXXXXX";//前端访问密码
 
-// 后台密码（不可为空）
-const ADMIN_PASSWORD = "lgd123456";
+// 后台密码(不可为空) (生产环境请使用 env.ADMIN_PASSWORD)
+const ADMIN_PASSWORD_FALLBACK = "XXXXXX";//后端访问密码
 
-// KV 命名空间绑定名称
-const KV_NAMESPACE = DOMAIN_INFO;
+// 兼容性别名 - 将在后续版本中移除
+let CF_API_KEYS = CF_API_KEYS_FALLBACK;
+let USERNAMES = USERNAMES_FALLBACK;
+let ACCESS_PASSWORD = ACCESS_PASSWORD_FALLBACK;
+let ADMIN_PASSWORD = ADMIN_PASSWORD_FALLBACK;
+
+// ============================================
+// 安全工具函数 - 认证和加密
+// ============================================
+
+/**
+ * 常量时间字符串比较 - 防止时序攻击
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+function secureCompare(a, b) {
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+/**
+ * 生成HMAC签名的认证token
+ * @param {string} data - 要签名的数据
+ * @param {string} secret - 密钥
+ * @returns {Promise<string>} Base64编码的签名
+ */
+async function generateHMAC(data, secret) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(data)
+  );
+
+  // 转换为Base64
+  const hashArray = Array.from(new Uint8Array(signature));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+}
+
+/**
+ * 创建带签名的认证token
+ * @param {string} type - token类型 ('access' 或 'admin')
+ * @param {number} expiresIn - 过期时间(秒),默认24小时
+ * @returns {Promise<string>} 签名的token
+ */
+async function createAuthToken(type, expiresIn = 86400) {
+  const payload = {
+    type: type,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + expiresIn
+  };
+
+  const payloadStr = JSON.stringify(payload);
+  const payloadB64 = btoa(payloadStr);
+
+  // 使用管理员密码作为签名密钥
+  const secret = type === 'admin' ? ADMIN_PASSWORD : ACCESS_PASSWORD;
+  const signature = await generateHMAC(payloadB64, secret);
+
+  return `${payloadB64}.${signature}`;
+}
+
+/**
+ * 验证认证token
+ * @param {string} token - 待验证的token
+ * @param {string} type - 预期的token类型
+ * @returns {Promise<Object|null>} 解析的payload或null(验证失败)
+ */
+async function verifyAuthToken(token, type) {
+  if (!token || typeof token !== 'string') {
+    return null;
+  }
+
+  const parts = token.split('.');
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const [payloadB64, signature] = parts;
+
+  try {
+    // 验证签名
+    const secret = type === 'admin' ? ADMIN_PASSWORD : ACCESS_PASSWORD;
+    const expectedSignature = await generateHMAC(payloadB64, secret);
+
+    if (!secureCompare(signature, expectedSignature)) {
+      console.warn('⚠️ Token签名验证失败');
+      return null;
+    }
+
+    // 解析payload
+    const payloadStr = atob(payloadB64);
+    const payload = JSON.parse(payloadStr);
+
+    // 验证类型
+    if (payload.type !== type) {
+      console.warn(`⚠️ Token类型不匹配: 期望 ${type}, 实际 ${payload.type}`);
+      return null;
+    }
+
+    // 验证过期时间
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) {
+      console.warn('⚠️ Token已过期');
+      return null;
+    }
+
+    return payload;
+  } catch (error) {
+    console.error('❌ Token验证错误:', error.message);
+    return null;
+  }
+}
+
+/**
+ * 从Cookie中提取token
+ * @param {Request} request
+ * @param {string} name - cookie名称
+ * @returns {string|null}
+ */
+function getCookie(request, name) {
+  const cookie = request.headers.get("Cookie");
+  if (!cookie) return null;
+
+  const match = cookie.match(new RegExp(`${name}=([^;]+)`));
+  return match ? match[1] : null;
+}
+
+/**
+ * 生成设置Cookie的响应头
+ * @param {string} name - cookie名称
+ * @param {string} value - cookie值
+ * @param {number} maxAge - 最大年龄(秒)
+ * @param {boolean} secure - 是否仅HTTPS
+ * @returns {string}
+ */
+function createCookieHeader(name, value, maxAge = 86400, secure = false) {
+  const parts = [
+    `${name}=${value}`,
+    'HttpOnly',
+    'Path=/',
+    'SameSite=Strict',
+    `Max-Age=${maxAge}`
+  ];
+
+  // 在生产环境(HTTPS)下添加Secure标志
+  if (secure) {
+    parts.push('Secure');
+  }
+
+  return parts.join('; ');
+}
+
+// ============================================
+// 输入验证工具函数
+// ============================================
+
+/**
+ * 自定义验证错误类
+ */
+class ValidationError extends Error {
+  constructor(message, field = null) {
+    super(message);
+    this.name = 'ValidationError';
+    this.field = field;
+    this.userMessage = message;
+  }
+}
+
+/**
+ * 验证域名格式
+ */
+function validateDomain(domain) {
+  if (!domain || typeof domain !== 'string') {
+    throw new ValidationError('域名不能为空', 'domain');
+  }
+
+  domain = domain.trim().toLowerCase();
+
+  if (domain.length === 0) {
+    throw new ValidationError('域名不能为空', 'domain');
+  }
+
+  if (domain.length > 253) {
+    throw new ValidationError('域名长度不能超过253字符', 'domain');
+  }
+
+  const domainRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+
+  if (!domainRegex.test(domain)) {
+    throw new ValidationError('域名格式无效,请输入有效的域名(例如: example.com)', 'domain');
+  }
+
+  const parts = domain.split('.');
+  if (parts.length < 2) {
+    throw new ValidationError('域名必须包含至少一个点(例如: example.com)', 'domain');
+  }
+
+  for (const part of parts) {
+    if (part.length === 0 || part.length > 63) {
+      throw new ValidationError('域名各部分长度必须在1-63字符之间', 'domain');
+    }
+  }
+
+  // 防止危险输入 (注意: 不包括斜杠,因为域名本身不应包含斜杠)
+  // 只检查域名字符串,不检查其他字段
+  if (/[<>\"\'\/\x00-\x1f\x7f]/.test(domain)) {
+    throw new ValidationError('域名包含非法字符', 'domain');
+  }
+
+  // 防止路径遍历 (检查连续的点)
+  if (/\.\./.test(domain)) {
+    throw new ValidationError('域名包含非法字符(路径遍历尝试)', 'domain');
+  }
+
+  return domain;
+}
+
+/**
+ * 验证API密钥格式
+ */
+function validateApiKey(apiKey) {
+  if (!apiKey || typeof apiKey !== 'string') {
+    throw new ValidationError('API密钥不能为空', 'apiKey');
+  }
+
+  apiKey = apiKey.trim();
+
+  if (apiKey.length < 20 || apiKey.length > 200) {
+    throw new ValidationError('API密钥长度无效', 'apiKey');
+  }
+
+  if (/[\x00-\x1f\x7f<>\"\'\\]/.test(apiKey)) {
+    throw new ValidationError('API密钥包含非法字符', 'apiKey');
+  }
+
+  return apiKey;
+}
+
+/**
+ * 验证action参数
+ */
+function validateAction(action, allowedActions) {
+  if (!action || typeof action !== 'string') {
+    throw new ValidationError('操作类型不能为空', 'action');
+  }
+
+  action = action.trim().toLowerCase();
+
+  if (!allowedActions.includes(action)) {
+    throw new ValidationError(
+      `无效的操作类型。允许: ${allowedActions.join(', ')}`,
+      'action'
+    );
+  }
+
+  return action;
+}
 
 // API Keys 管理类
 class ApiKeyManager {
   constructor() {
+    this.keys = [];
+    this.initialized = false;
+  }
+
+  // 从环境变量初始化keys
+  initFromEnv() {
     this.keys = CF_API_KEYS.map((key, index) => ({
       key,
       username: USERNAMES[index],
@@ -55,7 +350,7 @@ class ApiKeyManager {
       lastUsed: null,
       errorCount: 0
     }));
-    this.initialized = false;
+    console.log(`✅ ApiKeyManager初始化完成,共${this.keys.length}个API密钥`);
   }
 
   async init() {
@@ -141,22 +436,47 @@ class ApiKeyManager {
   }
 
   async saveToKV() {
+    if (!GLOBAL_ENV || !GLOBAL_ENV.DOMAIN_INFO) {
+      console.error('❌ DOMAIN_INFO KV命名空间未初始化');
+      return;
+    }
     const apiKeysData = {
       keys: this.keys,
       lastUpdated: Date.now()
     };
-    await KV_NAMESPACE.put('cf_api_keys', JSON.stringify(apiKeysData));
+    await GLOBAL_ENV.DOMAIN_INFO.put('cf_api_keys', JSON.stringify(apiKeysData));
   }
 
   async loadFromKV() {
+    if (!GLOBAL_ENV || !GLOBAL_ENV.DOMAIN_INFO) {
+      console.error('❌ DOMAIN_INFO KV命名空间未初始化');
+      return;
+    }
     try {
-      const data = await KV_NAMESPACE.get('cf_api_keys');
+      const data = await GLOBAL_ENV.DOMAIN_INFO.get('cf_api_keys');
       if (data) {
         const parsed = JSON.parse(data);
-        this.keys = parsed.keys || this.keys;
+        if (parsed.keys && parsed.keys.length > 0) {
+          // 检查KV中的数据是否包含fallback用户名(表示是旧数据)
+          const hasFallbackUsernames = parsed.keys.some(k =>
+            k.username && k.username.includes('cloudflare username')
+          );
+
+          if (hasFallbackUsernames) {
+            console.warn('⚠️ KV中包含fallback用户名(旧数据),忽略KV数据,使用环境变量');
+            console.log('💡 提示: 可以在管理后台重新保存API密钥配置以更新KV存储');
+            // 不覆盖,保持使用initFromEnv()加载的环境变量数据
+            return;
+          }
+
+          this.keys = parsed.keys;
+          console.log('✅ 从KV加载API密钥配置(覆盖环境变量)');
+        }
+      } else {
+        console.log('ℹ️ KV中无API密钥配置,使用环境变量');
       }
     } catch (error) {
-      console.error('加载API密钥失败:', error);
+      console.error('❌ 加载API密钥失败:', error);
     }
   }
 
@@ -165,6 +485,38 @@ class ApiKeyManager {
       ...k,
       key: k.key.slice(0, 8) + '...' + k.key.slice(-8) // 隐藏密钥中间部分
     }));
+  }
+
+  // 清除KV中的旧数据(包含fallback用户名的数据)
+  async clearOldKVData() {
+    if (!GLOBAL_ENV || !GLOBAL_ENV.DOMAIN_INFO) {
+      console.error('❌ DOMAIN_INFO KV命名空间未初始化');
+      return false;
+    }
+    try {
+      const data = await GLOBAL_ENV.DOMAIN_INFO.get('cf_api_keys');
+      if (data) {
+        const parsed = JSON.parse(data);
+        const hasFallbackUsernames = parsed.keys && parsed.keys.some(k =>
+          k.username && k.username.includes('cloudflare username')
+        );
+
+        if (hasFallbackUsernames) {
+          await GLOBAL_ENV.DOMAIN_INFO.delete('cf_api_keys');
+          console.log('✅ 已清除KV中的旧API密钥数据');
+          return true;
+        } else {
+          console.log('ℹ️ KV中没有旧数据');
+          return false;
+        }
+      } else {
+        console.log('ℹ️ KV中没有API密钥数据');
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ 清除KV旧数据失败:', error);
+      return false;
+    }
   }
 }
 
@@ -358,8 +710,12 @@ class CustomDomainManager {
   }
 
   async loadFromKV() {
+    if (!GLOBAL_ENV || !GLOBAL_ENV.DOMAIN_INFO) {
+      console.error('❌ DOMAIN_INFO KV命名空间未初始化');
+      return;
+    }
     try {
-      const data = await KV_NAMESPACE.get('custom_domains');
+      const data = await GLOBAL_ENV.DOMAIN_INFO.get('custom_domains');
       if (data) {
         const parsed = JSON.parse(data);
         this.domains = new Map(parsed.domains || []);
@@ -370,11 +726,15 @@ class CustomDomainManager {
   }
 
   async saveToKV() {
+    if (!GLOBAL_ENV || !GLOBAL_ENV.DOMAIN_INFO) {
+      console.error('❌ DOMAIN_INFO KV命名空间未初始化');
+      return;
+    }
     const customDomainsData = {
       domains: Array.from(this.domains.entries()),
       lastUpdated: Date.now()
     };
-    await KV_NAMESPACE.put('custom_domains', JSON.stringify(customDomainsData));
+    await GLOBAL_ENV.DOMAIN_INFO.put('custom_domains', JSON.stringify(customDomainsData));
   }
 
   async addDomain(domain, info) {
@@ -448,42 +808,64 @@ class CustomDomainManager {
   }
 }
 
-// 全局实例
-const apiKeyManager = new ApiKeyManager();
-const cacheManager = new CacheManager(KV_NAMESPACE);
-const freeDomainManager = new FreeDomainManager();
-const customDomainManager = new CustomDomainManager();
+// 全局实例 - 延迟初始化
+let apiKeyManager = null;
+let cacheManager = null;
+let freeDomainManager = null;
+let customDomainManager = null;
+
+// 初始化全局管理器实例
+function initManagers() {
+  if (!apiKeyManager) {
+    apiKeyManager = new ApiKeyManager();
+    apiKeyManager.initFromEnv(); // 从环境变量初始化API密钥和用户名
+  }
+  if (!cacheManager && GLOBAL_ENV && GLOBAL_ENV.DOMAIN_INFO) {
+    cacheManager = new CacheManager(GLOBAL_ENV.DOMAIN_INFO);
+  }
+  if (!freeDomainManager) {
+    freeDomainManager = new FreeDomainManager();
+  }
+  if (!customDomainManager) {
+    customDomainManager = new CustomDomainManager();
+  }
+}
 
 // 清理 KV 中的错误数据（改进版）
 async function cleanupKV() {
   console.log('开始清理KV错误数据...');
-  
+
+  if (!GLOBAL_ENV || !GLOBAL_ENV.DOMAIN_INFO) {
+    console.error('❌ DOMAIN_INFO KV命名空间未初始化');
+    return;
+  }
+
   try {
-    const list = await KV_NAMESPACE.list({ prefix: 'whois_' });
+    const list = await GLOBAL_ENV.DOMAIN_INFO.list({ prefix: 'whois_' });
     let cleanedCount = 0;
-    
+
     for (const key of list.keys) {
-      const value = await KV_NAMESPACE.get(key.name);
+      const value = await GLOBAL_ENV.DOMAIN_INFO.get(key.name);
       if (value) {
         try {
           const parsed = JSON.parse(value);
           const { data } = parsed;
-          
+
           // 清理有错误的缓存数据
           if (data && data.whoisError && data.whoisError.includes('网络连接错误')) {
-            await KV_NAMESPACE.delete(key.name);
+            await GLOBAL_ENV.DOMAIN_INFO.delete(key.name);
             cleanedCount++;
             console.log('清理错误缓存: ' + key.name);
           }
         } catch (error) {
           // 清理损坏的缓存数据
-          await KV_NAMESPACE.delete(key.name);
+          await GLOBAL_ENV.DOMAIN_INFO.delete(key.name);
           cleanedCount++;
           console.log('清理损坏缓存: ' + key.name);
         }
       }
     }
-    
+
     if (cleanedCount > 0) {
       console.log('KV清理完成，清理了 ' + cleanedCount + ' 个错误项');
     } else {
@@ -511,13 +893,96 @@ const footerHTML = `
   </footer>
 `;
 
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request))
-});
+// 全局环境变量引用 - 由 fetch() 函数设置
+let GLOBAL_ENV = null;
 
-async function handleRequest(request) {
-  // 清理KV中的错误数据
-  await cleanupKV();
+// 初始化环境配置
+function initConfig(env) {
+  GLOBAL_ENV = env;
+
+  // 从环境变量加载配置(优先级高于硬编码值)
+  if (env.CF_API_KEYS) {
+    try {
+      CF_API_KEYS = JSON.parse(env.CF_API_KEYS);
+      console.log('✅ 已从环境变量加载 CF_API_KEYS');
+    } catch (e) {
+      console.warn('⚠️ 环境变量 CF_API_KEYS 格式错误,使用fallback值');
+      CF_API_KEYS = CF_API_KEYS_FALLBACK;
+    }
+  } else {
+    console.warn('⚠️ 未设置环境变量 CF_API_KEYS,使用硬编码值(不安全!)');
+    CF_API_KEYS = CF_API_KEYS_FALLBACK;
+  }
+
+  if (env.USERNAMES) {
+    try {
+      USERNAMES = JSON.parse(env.USERNAMES);
+      console.log('✅ 已从环境变量加载 USERNAMES');
+    } catch (e) {
+      console.warn('⚠️ 环境变量 USERNAMES 格式错误,使用fallback值');
+      USERNAMES = USERNAMES_FALLBACK;
+    }
+  } else {
+    console.warn('⚠️ 未设置环境变量 USERNAMES,使用硬编码值');
+    USERNAMES = USERNAMES_FALLBACK;
+  }
+
+  if (env.ACCESS_PASSWORD !== undefined) {
+    ACCESS_PASSWORD = env.ACCESS_PASSWORD;
+    console.log('✅ 已从环境变量加载 ACCESS_PASSWORD');
+  } else {
+    console.warn('⚠️ 未设置环境变量 ACCESS_PASSWORD,使用硬编码值(不安全!)');
+    ACCESS_PASSWORD = ACCESS_PASSWORD_FALLBACK;
+  }
+
+  if (env.ADMIN_PASSWORD) {
+    ADMIN_PASSWORD = env.ADMIN_PASSWORD;
+    console.log('✅ 已从环境变量加载 ADMIN_PASSWORD');
+  } else {
+    console.warn('⚠️ 未设置环境变量 ADMIN_PASSWORD,使用硬编码值(不安全!)');
+    ADMIN_PASSWORD = ADMIN_PASSWORD_FALLBACK;
+  }
+
+  // 加载 WHOIS_PROXY 配置
+  if (env.WHOIS_PROXY) {
+    CONFIG.WHOIS_PROXY = env.WHOIS_PROXY;
+    console.log('✅ 已从环境变量加载 WHOIS_PROXY:', CONFIG.WHOIS_PROXY);
+  } else {
+    console.log('ℹ️ 使用默认 WHOIS_PROXY:', CONFIG.WHOIS_PROXY);
+  }
+}
+
+// Module Worker 格式的导出(推荐,支持环境变量)
+export default {
+  async fetch(request, env, ctx) {
+    // 初始化环境配置
+    initConfig(env);
+    // 初始化管理器实例
+    initManagers();
+
+    return handleRequest(request, env, ctx);
+  },
+
+  // Cron触发器(用于定期清理KV)
+  async scheduled(event, env, ctx) {
+    console.log('🕐 执行定期KV清理任务...');
+    initConfig(env);
+    initManagers();
+    ctx.waitUntil(cleanupKV());
+  }
+};
+
+// Service Worker 格式的兼容性支持(向后兼容,但无法使用环境变量)
+if (typeof addEventListener !== 'undefined') {
+  addEventListener('fetch', event => {
+    console.warn('⚠️ 使用Service Worker格式,无法访问环境变量!请升级到Module Worker格式。');
+    event.respondWith(handleRequest(event.request, {}, {}));
+  });
+}
+
+async function handleRequest(request, env = {}, ctx = {}) {
+  // 注意: cleanupKV() 调用已移除,改为使用 Cron 定时任务执行
+  // 详见: export default { scheduled } 部分
 
   const url = new URL(request.url);
   const path = url.pathname;
@@ -561,22 +1026,36 @@ async function handleRequest(request) {
 //第二部分：处理函数（改进版）
 async function handleManualQuery(request) {
   if (request.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
+    return new Response(JSON.stringify({ error: "只支持POST请求" }), {
+      status: 405,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 
   try {
     const data = await request.json();
-    const { domain, apiKey } = data;
 
-    if (!domain) {
-      return new Response(JSON.stringify({ error: '域名不能为空' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    // 验证域名输入
+    let domain;
+    try {
+      domain = validateDomain(data.domain);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        console.warn(`❌ 域名验证失败: ${error.message}`);
+        return new Response(JSON.stringify({
+          error: error.userMessage,
+          field: error.field
+        }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+      throw error;
     }
 
-    console.log('手动查询域名: ' + domain);
-    const whoisInfo = await whoisService.query(domain);
+    console.log('✅ 手动查询域名: ' + domain);
+    const service = getWhoisService();
+    const whoisInfo = await service.query(domain);
     
     return new Response(JSON.stringify(whoisInfo), {
       headers: { 'Content-Type': 'application/json' }
@@ -592,9 +1071,11 @@ async function handleManualQuery(request) {
 
 // Cloudflare API密钥管理API
 async function handleCfKeysApi(request) {
-  // 验证管理员权限
-  const cookie = request.headers.get("Cookie");
-  if (!cookie || !cookie.includes(`admin_token=${ADMIN_PASSWORD}`)) {
+  // 验证管理员权限 - 使用安全token验证
+  const token = getCookie(request, 'admin_token');
+  const payload = await verifyAuthToken(token, 'admin');
+
+  if (!payload) {
     return new Response(JSON.stringify({ error: '需要管理员权限' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' }
@@ -614,30 +1095,107 @@ async function handleCfKeysApi(request) {
 
     if (request.method === 'POST') {
       const data = await request.json();
-      const { action, key, username } = data;
+
+      // 验证action参数
+      let action;
+      try {
+        action = validateAction(data.action, ['add', 'remove', 'toggle', 'clearOldData']);
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          return new Response(JSON.stringify({
+            error: error.userMessage,
+            field: error.field
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        throw error;
+      }
 
       switch (action) {
+        case 'clearOldData':
+          // 清除KV中的旧数据
+          const cleared = await apiKeyManager.clearOldKVData();
+          if (cleared) {
+            // 重新从环境变量初始化
+            apiKeyManager.initFromEnv();
+            return new Response(JSON.stringify({
+              success: true,
+              message: '已清除KV旧数据并重新从环境变量加载'
+            }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          } else {
+            return new Response(JSON.stringify({
+              success: true,
+              message: 'KV中没有需要清除的旧数据'
+            }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+
+
         case 'add':
-          await apiKeyManager.addApiKey(key, username);
-          return new Response(JSON.stringify({ success: true, message: 'API密钥添加成功' }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
+          // 验证API密钥和用户名
+          try {
+            const validatedKey = validateApiKey(data.key);
+            const validatedUsername = data.username ? data.username.trim() : '';
+
+            if (!validatedUsername) {
+              throw new ValidationError('用户名不能为空', 'username');
+            }
+
+            await apiKeyManager.addApiKey(validatedKey, validatedUsername);
+            return new Response(JSON.stringify({ success: true, message: 'API密钥添加成功' }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          } catch (error) {
+            if (error instanceof ValidationError) {
+              return new Response(JSON.stringify({
+                error: error.userMessage,
+                field: error.field
+              }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            throw error;
+          }
 
         case 'remove':
-          await apiKeyManager.removeApiKey(key);
-          return new Response(JSON.stringify({ success: true, message: 'API密钥删除成功' }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-
         case 'toggle':
-          const isActive = await apiKeyManager.toggleApiKey(key);
-          return new Response(JSON.stringify({ 
-            success: true, 
-            message: `API密钥${isActive ? '启用' : '禁用'}成功`,
-            active: isActive
-          }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
+          // 验证API密钥
+          try {
+            const validatedKey = validateApiKey(data.key);
+
+            if (action === 'remove') {
+              await apiKeyManager.removeApiKey(validatedKey);
+              return new Response(JSON.stringify({ success: true, message: 'API密钥删除成功' }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            } else {
+              const isActive = await apiKeyManager.toggleApiKey(validatedKey);
+              return new Response(JSON.stringify({
+                success: true,
+                message: `API密钥${isActive ? '启用' : '禁用'}成功`,
+                active: isActive
+              }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+          } catch (error) {
+            if (error instanceof ValidationError) {
+              return new Response(JSON.stringify({
+                error: error.userMessage,
+                field: error.field
+              }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            throw error;
+          }
 
         default:
           return new Response(JSON.stringify({ error: '无效的操作' }), {
@@ -659,9 +1217,11 @@ async function handleCfKeysApi(request) {
 
 // 自定义域名管理API
 async function handleCustomDomainsApi(request) {
-  // 验证管理员权限
-  const cookie = request.headers.get("Cookie");
-  if (!cookie || !cookie.includes(`admin_token=${ADMIN_PASSWORD}`)) {
+  // 验证管理员权限 - 使用安全token验证
+  const token = getCookie(request, 'admin_token');
+  const payload = await verifyAuthToken(token, 'admin');
+
+  if (!payload) {
     return new Response(JSON.stringify({ error: '需要管理员权限' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' }
@@ -681,7 +1241,26 @@ async function handleCustomDomainsApi(request) {
 
     if (request.method === 'POST') {
       const data = await request.json();
-      const { action, domain, info } = data;
+
+      // 验证action参数
+      let action, domain;
+      try {
+        action = validateAction(data.action, ['add', 'update', 'remove']);
+        domain = validateDomain(data.domain);
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          return new Response(JSON.stringify({
+            error: error.userMessage,
+            field: error.field
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        throw error;
+      }
+
+      const { info } = data;
 
       switch (action) {
         case 'add':
@@ -742,9 +1321,14 @@ async function handleCustomDomainsApi(request) {
 
 async function handleFrontend(request) {
   try {
-    const cookie = request.headers.get("Cookie");
-    if (ACCESS_PASSWORD && (!cookie || !cookie.includes(`access_token=${ACCESS_PASSWORD}`))) {
-      return Response.redirect(`${new URL(request.url).origin}/login`, 302);
+    // 如果设置了访问密码,验证token
+    if (ACCESS_PASSWORD) {
+      const token = getCookie(request, 'access_token');
+      const payload = await verifyAuthToken(token, 'access');
+
+      if (!payload) {
+        return Response.redirect(`${new URL(request.url).origin}/login`, 302);
+      }
     }
 
     console.log("获取Cloudflare域名信息...");
@@ -766,8 +1350,11 @@ async function handleFrontend(request) {
 
 async function handleAdmin(request) {
   try {
-    const cookie = request.headers.get("Cookie");
-    if (!cookie || !cookie.includes(`admin_token=${ADMIN_PASSWORD}`)) {
+    // 验证管理员token
+    const token = getCookie(request, 'admin_token');
+    const payload = await verifyAuthToken(token, 'admin');
+
+    if (!payload) {
       return Response.redirect(`${new URL(request.url).origin}/admin-login`, 302);
     }
 
@@ -792,13 +1379,21 @@ async function handleLogin(request) {
 
       console.log("前台登录尝试");
 
-      if (password === ACCESS_PASSWORD) {
+      // 使用常量时间比较防止时序攻击
+      if (secureCompare(password, ACCESS_PASSWORD)) {
         console.log("前台登录成功");
+
+        // 生成安全的签名token
+        const token = await createAuthToken('access', 86400);
+
+        // 检测是否为HTTPS连接
+        const isHttps = request.url.startsWith('https://');
+
         return new Response("Login successful", {
           status: 302,
           headers: {
             "Location": "/",
-            "Set-Cookie": `access_token=${ACCESS_PASSWORD}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400`
+            "Set-Cookie": createCookieHeader('access_token', token, 86400, isHttps)
           }
         });
       } else {
@@ -809,7 +1404,7 @@ async function handleLogin(request) {
         });
       }
     }
-    
+
     return new Response(generateLoginHTML("前台登录", "/login"), {
       headers: { "Content-Type": "text/html; charset=utf-8" }
     });
@@ -827,16 +1422,24 @@ async function handleAdminLogin(request) {
       console.log("处理POST登录表单");
       const formData = await request.formData();
       const password = formData.get("password");
-      
+
       console.log("验证管理员密码");
 
-      if (password === ADMIN_PASSWORD) {
+      // 使用常量时间比较防止时序攻击
+      if (secureCompare(password, ADMIN_PASSWORD)) {
         console.log("管理员登录成功");
+
+        // 生成安全的签名token
+        const token = await createAuthToken('admin', 86400);
+
+        // 检测是否为HTTPS连接
+        const isHttps = request.url.startsWith('https://');
+
         return new Response("Admin login successful", {
           status: 302,
           headers: {
             "Location": "/admin",
-            "Set-Cookie": `admin_token=${ADMIN_PASSWORD}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400`
+            "Set-Cookie": createCookieHeader('admin_token', token, 86400, isHttps)
           }
         });
       } else {
@@ -871,8 +1474,9 @@ async function handleWhoisRequest(domain) {
       });
     }
 
-    const whoisInfo = await whoisService.query(domain);
-    
+    const service = getWhoisService();
+    const whoisInfo = await service.query(domain);
+
     // 如果是自定义域名且查询成功，仅在没有手动修改的情况下更新
     await customDomainManager.loadFromKV();
     const customDomain = customDomainManager.getDomain(domain);
@@ -1194,8 +1798,17 @@ class WhoisService {
   }
 }
 
-// 创建全局 WHOIS 服务实例
-const whoisService = new WhoisService(CONFIG.WHOIS_PROXY, cacheManager, freeDomainManager);
+// 全局 WHOIS 服务实例 - 延迟初始化
+let whoisService = null;
+
+// 获取whoisService实例
+function getWhoisService() {
+  if (!whoisService && cacheManager && freeDomainManager) {
+    whoisService = new WhoisService(CONFIG.WHOIS_PROXY, cacheManager, freeDomainManager);
+    console.log('✅ WhoisService初始化完成');
+  }
+  return whoisService;
+}
 
 //第三部分：API更新和Cloudflare集成（改进版）
 async function handleApiUpdate(request) {
@@ -1209,9 +1822,11 @@ async function handleApiUpdate(request) {
       });
     }
 
-    // 验证管理员权限
-    const cookie = request.headers.get("Cookie");
-    if (!cookie || !cookie.includes(`admin_token=${ADMIN_PASSWORD}`)) {
+    // 验证管理员权限 - 使用安全token验证
+    const token = getCookie(request, 'admin_token');
+    const payload = await verifyAuthToken(token, 'admin');
+
+    if (!payload) {
       return new Response(JSON.stringify({ error: "未授权访问" }), {
         status: 401,
         headers: { "Content-Type": "application/json" }
@@ -1308,8 +1923,9 @@ async function handleRefreshAction(domain, force) {
       await cacheManager.delete(domain);
       console.log('已清除缓存: ' + domain);
     }
-    
-    const info = await whoisService.query(domain);
+
+    const service = getWhoisService();
+    const info = await service.query(domain);
     return {
       success: true,
       message: `域名 ${domain} 信息已更新`,
@@ -1375,12 +1991,17 @@ async function handleTestApisAction() {
 
 async function handleGetStatsAction() {
   console.log("获取系统统计信息");
-  
+
   const domains = await fetchCloudflareDomainsInfo();
   const activeKeys = apiKeyManager.getActiveKeys();
-  
+
   // 获取缓存统计
-  const cacheList = await KV_NAMESPACE.list({ prefix: 'whois_' });
+  let cacheList = { keys: [] };
+  if (GLOBAL_ENV && GLOBAL_ENV.DOMAIN_INFO) {
+    cacheList = await GLOBAL_ENV.DOMAIN_INFO.list({ prefix: 'whois_' });
+  } else {
+    console.error('❌ DOMAIN_INFO KV命名空间未初始化');
+  }
   
   return {
     success: true,
@@ -1539,11 +2160,22 @@ class CloudflareFetcher {
   }
 }
 
-// 创建全局 Cloudflare 获取器实例
-const cloudflareFetcher = new CloudflareFetcher(apiKeyManager);
+// 全局 Cloudflare 获取器实例 - 延迟初始化
+let cloudflareFetcher = null;
 
 async function fetchCloudflareDomainsInfo() {
   try {
+    // 确保cloudflareFetcher已初始化
+    if (!cloudflareFetcher && apiKeyManager) {
+      cloudflareFetcher = new CloudflareFetcher(apiKeyManager);
+      console.log('✅ CloudflareFetcher初始化完成');
+    }
+
+    if (!cloudflareFetcher) {
+      console.error('❌ CloudflareFetcher未初始化');
+      return [];
+    }
+
     return await cloudflareFetcher.fetchAllDomains();
   } catch (error) {
     console.error('获取Cloudflare域名失败:', error);
@@ -1638,8 +2270,9 @@ async function fetchDomainInfo(domains) {
           };
         } else {
           // Cloudflare域名查询WHOIS信息
-          const whoisInfo = await whoisService.query(domain.name);
-          
+          const service = getWhoisService();
+          const whoisInfo = await service.query(domain.name);
+
           // 检查是否是免费域名，如果是则优先使用免费域名的默认信息
           const freeInfo = freeDomainManager.getInfo(domain.name);
           if (freeInfo && !whoisInfo.whoisError) {
