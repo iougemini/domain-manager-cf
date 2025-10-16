@@ -1,8 +1,29 @@
 # Domain Manager
 
 <div align="center">
-<h1 style="font-size: 120px; margin: 0;">🛡️</h1>
 
+<svg width="150" height="150" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#357ABD;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <path d="M50 10 L80 20 L80 45 Q80 70 50 90 Q20 70 20 45 L20 20 Z"
+        fill="url(#shieldGradient)"
+        stroke="#2C5F8D"
+        stroke-width="2"/>
+  <path d="M50 25 L65 32 L65 48 Q65 62 50 75 Q35 62 35 48 L35 32 Z"
+        fill="#ffffff"
+        opacity="0.3"/>
+  <text x="50" y="58"
+        font-size="28"
+        font-weight="bold"
+        text-anchor="middle"
+        fill="#ffffff">✓</text>
+</svg>
+
+--- 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange.svg)
