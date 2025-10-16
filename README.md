@@ -1,8 +1,8 @@
 # Domain Manager
 
 <div align="center">
-<p style="font-size: 150px;"> 🛡️ </p>
-  
+<h1 style="font-size: 80px; margin: 0;">🛡️</h1>
+
 --- 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -533,8 +533,6 @@ wrangler tail | grep "失败"
 - 🐛 修复服务初始化时机问题
 - 🐛 修复域名编辑保存错误
 
-详细修改记录请查看 [PROGRESS.md](./PROGRESS.md)。
-
 ---
 
 ## 🤝 贡献指南
@@ -577,7 +575,10 @@ wrangler tail | grep "失败"
 
 ## 🙏 致谢
 
-- [ypq123456789/domainkeeper](https://github.com/ypq123456789/domainkeeper) - 域名可视化展示面板（本项目修改自 **domainkeeper** ）
+本项目基于 [ypq123456789/domainkeeper](https://github.com/ypq123456789/domainkeeper) 项目进行改进和扩展。
+
+特别感谢:
+- [ypq123456789/domainkeeper](https://github.com/ypq123456789/domainkeeper) - 原始域名可视化展示面板项目
 - [Cloudflare Workers](https://workers.cloudflare.com/) - 强大的 Edge Computing 平台
 - [next-whois](https://github.com/zmh-program/next-whois) - WHOIS 查询代理服务
 - 所有贡献者和用户的支持
