@@ -1,9 +1,8 @@
 # Domain Manager
 
 <div align="center">
-<h1 style="font-size: 80px; margin: 0;">🛡️</h1>
+<h1 style="font-size: 120px; margin: 0;">🛡️</h1>
 
---- 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange.svg)
