@@ -1,7 +1,7 @@
 # Domain Manager
 
 <div align="center">
-<p style="font-size:500px">🛡️</p>
+<p style="font-size: 150px;"> 🛡️ </p>
   
 --- 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
