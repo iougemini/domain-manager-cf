@@ -29,8 +29,8 @@ workers.js.backup*
 .env.production
 .dev.vars
 
-# wrangler.toml 如果包含实际的 KV ID，建议添加到 .gitignore
-# 然后提供 wrangler.toml.example 作为模板
+# wrangler.toml 已移除模板，作为唯一权威配置（KV ID 用占位符，无敏感信息）
+# 若你的 wrangler.toml 包含实际 KV ID，建议取消下面这行忽略
 # wrangler.toml
 
 # ============================================
