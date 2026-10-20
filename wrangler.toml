@@ -1,0 +1,49 @@
+# Cloudflare Workers 配置文件
+# 详细文档: https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "domain-manager"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# KV 命名空间绑定
+# 创建KV命名空间: wrangler kv:namespace create "DOMAIN_INFO"
+# 会返回类似: { binding = "DOMAIN_INFO", id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+[[kv_namespaces]]
+binding = "DOMAIN_INFO"
+id = "请替换为您的KV命名空间ID"  # 替换为实际的KV命名空间ID
+
+# 环境变量配置 (非敏感信息)
+[vars]
+# 如果不设置这些变量,将使用代码中的空 fallback 值
+
+# Cloudflare API密钥数组 (JSON格式)
+# CF_API_KEYS = '["your_api_key_1","your_api_key_2"]'
+
+# 对应的用户名数组 (JSON格式,需与API密钥数组对应)
+# USERNAMES = '["username1","username2"]'
+
+# 前端访问密码
+# ACCESS_PASSWORD = "your_access_password"
+
+# WHOIS 代理地址 (可选, 未配置时 WHOIS 查询返回 N/A)
+# WHOIS_PROXY = "https://your-whois-proxy.example.com"
+
+# ⚠️ 敏感信息使用 wrangler secret 命令设置 (推荐)
+# 不要在此文件中直接写入敏感信息!
+#
+# wrangler secret put ADMIN_PASSWORD      # 管理后台密码
+# wrangler secret put CF_API_KEYS         # API密钥数组 JSON
+# wrangler secret put USERNAMES           # 用户名数组 JSON
+# wrangler secret put TOKEN_SECRET        # (可选) 独立 token 签名密钥, 未设置时回退到对应密码
+
+# Cron 定时任务 (用于定期清理KV缓存)
+[triggers]
+crons = ["0 2 * * *"]  # 每天凌晨2点执行清理任务
+
+# 多环境配置示例
+# [env.staging]
+# name = "domain-manager-staging"
+# vars = { ... }
+# [[env.staging.kv_namespaces]]
+# binding = "DOMAIN_INFO"
+# id = "staging环境的KV命名空间ID"

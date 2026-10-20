@@ -1,0 +1,65 @@
+# Cloudflare Workers 配置文件
+# 详细文档: https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "domain-manager"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# KV 命名空间绑定
+# 创建KV命名空间: wrangler kv:namespace create "DOMAIN_INFO"
+# 会返回类似: { binding = "DOMAIN_INFO", id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+[[kv_namespaces]]
+binding = "DOMAIN_INFO"
+id = "请替换为您的KV命名空间ID"  # 替换为实际的KV命名空间ID
+
+# 环境变量配置 (非敏感信息)
+[vars]
+# 如果不设置这些变量,将使用 src/config.js 中的硬编码 fallback 值
+
+# WHOIS代理地址 (可选,未配置时 WHOIS 查询返回 N/A)
+# 自建WHOIS代理参考: https://github.com/zmh-program/next-whois
+# WHOIS_PROXY = "https://your-whois-proxy.example.com"
+
+# Cloudflare API密钥数组 (JSON格式)
+# CF_API_KEYS = '["your_api_key_1","your_api_key_2","your_api_key_3"]'
+
+# 对应的用户名数组 (JSON格式,需与API密钥数组对应)
+# USERNAMES = '["username1","username2","username3"]'
+
+# 前端访问密码 (可为空)
+# ACCESS_PASSWORD = "your_access_password"
+
+# ⚠️ 敏感信息配置 (使用 wrangler secret 命令设置)
+# 不要在此文件中直接写入敏感信息!
+#
+# 设置管理员密码:
+# wrangler secret put ADMIN_PASSWORD
+#
+# 设置API密钥(推荐):
+# wrangler secret put CF_API_KEYS
+#
+# 设置用户名:
+# wrangler secret put USERNAMES
+#
+# 设置WHOIS代理(可选):
+# wrangler secret put WHOIS_PROXY
+
+# Cron 定时任务 (用于定期清理KV缓存)
+[triggers]
+crons = ["0 2 * * *"]  # 每天凌晨2点执行清理任务
+
+# 开发环境配置
+# 运行: wrangler dev
+# 将在 http://localhost:8787 启动开发服务器
+
+# 部署命令
+# 部署到生产环境: wrangler deploy
+# 查看日志: wrangler tail
+
+# 多环境配置示例
+# [env.staging]
+# name = "domain-manager-staging"
+# vars = { ... }
+# [[env.staging.kv_namespaces]]
+# binding = "DOMAIN_INFO"
+# id = "staging环境的KV命名空间ID"
