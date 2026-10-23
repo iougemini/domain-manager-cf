@@ -1,4 +1,4 @@
-# DSMC — Domain Status Manager for Cloudflare
+# DSMC
 
 <div align="center">
 
