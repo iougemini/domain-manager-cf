@@ -29,9 +29,10 @@ workers.js.backup*
 .env.production
 .dev.vars
 
-# wrangler.toml 已移除模板，作为唯一权威配置（KV ID 用占位符，无敏感信息）
-# 若你的 wrangler.toml 包含实际 KV ID，建议取消下面这行忽略
-# wrangler.toml
+# wrangler.toml 是本地部署配置，含实际 KV ID / CF API Token / 访问密码，
+# 绝不进仓库。新环境请 `cp wrangler.toml.example wrangler.toml` 后填入自己的值，
+# 敏感项优先用 `wrangler secret put` 而不是写进 [vars]。
+wrangler.toml
 
 # ============================================
 # Node.js
@@ -40,7 +41,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+# package-lock.json 要进仓库：别人 clone 后 npm ci 能装出一模一样的依赖树。
+# 之前把它忽略了，esbuild 只是 wrangler 的传递依赖，版本不受控。
 yarn.lock
 
 # ============================================

@@ -1,0 +1,102 @@
+# Cloudflare Workers 配置文件
+# 详细文档: https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "domain-manager"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# KV 命名空间绑定
+# 创建KV命名空间: wrangler kv:namespace create "DOMAIN_INFO"
+# 会返回类似: { binding = "DOMAIN_INFO", id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+[[kv_namespaces]]
+binding = "DOMAIN_INFO"
+id = "请替换为您的KV命名空间ID"  # 替换为实际的KV命名空间ID
+
+# ---------------------------------------------------------------------------
+# 从 v2.2.0 起，绝大多数配置都搬到了 KV，可以在页面上直接改，无需重新部署。
+#
+# 存进 KV 的配置键（页面写入，通常不需要手工编辑）：
+#   config:accounts       Cloudflare 账户列表（Token 只存明文于 KV，读接口掩码）
+#   config:settings       访问密码 / 管理员密码哈希、会话时长、WHOIS 代理、查询节奏
+#   config:dnshe          DNSHE API Key 列表（支持多组，401/403 自动切换）
+#   config:notify         通知渠道与提醒规则
+#   notify:state          上次推送时间、内容指纹、各渠道结果
+#   config:free-domains   免费域名后缀白名单
+#
+# 首次部署后建议：
+#   1. 用 ADMIN_PASSWORD 环境变量登录管理后台
+#   2. 到「设置」页把访问密码 / 管理员密码改成自己的
+#   3. 到「账户」页添加 Cloudflare API Token
+#   4. 密码落库后，就可以把 ADMIN_PASSWORD / ACCESS_PASSWORD 从环境变量里删掉了
+# ---------------------------------------------------------------------------
+
+# 环境变量配置（可选）
+[vars]
+# 下面这些变量只在 KV 里没有对应配置时作为兜底值。
+# 全部留空也能跑起来，只是首次登录需要设置密码。
+
+# 首次部署时的管理员密码（登录后请到「设置」页改成哈希存储）
+# ADMIN_PASSWORD = "your_admin_password"
+
+# 前端访问密码（留空表示站点公开）
+# ACCESS_PASSWORD = "your_access_password"
+
+# 老版本的账户配置：仍会被读取，并可在「账户」页一键导入到 KV
+# CF_API_KEYS = '["your_api_key_1","your_api_key_2"]'
+# USERNAMES   = '["username1","username2"]'
+
+# DNSHE 凭据（可在「DNSHE」页管理，支持多组）
+# 注意：Key 与 Secret 必须成对配置 —— whois 接口要求两个头同时存在，
+# 只配 Key 会返回 "Missing API credentials"，看起来像没配。
+# KV 里一旦有凭证就以 KV 为准，这里的值只在 KV 为空时兜底。
+# DNSHE_API_KEY    = "cfsd_xxxxxxxx"
+# DNSHE_API_SECRET = "sk_xxxxxxxx"
+
+# WHOIS 代理地址（可选，未配置时 WHOIS 查询返回 N/A）
+# WHOIS_PROXY = "https://your-whois-proxy.example.com"
+
+# 站点信息覆盖（「关于」页展示用）
+# PROJECT_NAME        = "DSMC"
+# PROJECT_GITHUB      = "https://github.com/your/repo"
+# PROJECT_COMMUNITY   = "https://your-community.example.com"
+# PROJECT_WECHAT      = "your_wechat_name"
+
+# ⚠️ 敏感信息优先用 wrangler secret 设置，不要写进本文件提交到仓库
+# wrangler secret put ADMIN_PASSWORD      # 管理后台密码
+# wrangler secret put ACCESS_PASSWORD     # 访问密码
+# wrangler secret put CF_API_KEYS         # API密钥数组 JSON（老配置）
+# wrangler secret put USERNAMES           # 用户名数组 JSON（老配置）
+# wrangler secret put DNSHE_API_KEY       # DNSHE Key（老配置）
+# wrangler secret put DNSHE_API_SECRET    # DNSHE Secret（老配置）
+# wrangler secret put TOKEN_SECRET        # (可选) 独立 token 签名密钥，未设置时从密码哈希派生
+
+# Cron 定时任务
+# 作用：同一个 scheduled 里顺序执行三件事
+#   1. 清理过期 KV 缓存
+#   2. 域名健康巡检：DNS 解析探测 + 注册局状态，结果写 KV 的 health:<domain>
+#   3. 发送到期提醒与健康告警
+#
+# ⚠️ 不配 cron 的话巡检永远不会跑：页面上的「健康巡检」会一直是
+#    「还没有巡检记录」，已暂停/解析丢失的域名也不会被标记出来。
+#    通知未启用只是不发消息，巡检照常执行，所以即使不用通知也要保留这条 cron。
+[triggers]
+crons = ["0 2 * * *"]  # 每天 UTC 02:00（北京时间 10:00）执行
+
+# 想更频繁地检查到期情况，可以改成每天多次：
+# crons = ["0 2 * * *", "0 14 * * *"]
+
+# 多环境配置示例
+# [env.staging]
+# name = "domain-manager-staging"
+# vars = { ... }
+# [[env.staging.kv_namespaces]]
+# binding = "DOMAIN_INFO"
+# id = "staging环境的KV命名空间ID"
+
+# 开发环境配置
+# 运行: wrangler dev
+# 将在 http://localhost:8787 启动开发服务器
+
+# 部署命令
+# 部署到生产环境: wrangler deploy
+# 查看日志: wrangler tail

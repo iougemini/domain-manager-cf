@@ -166,3 +166,24 @@ export function createCookieHeader(name, value, maxAge = 86400, secure = false) 
 
   return parts.join('; ');
 }
+
+/**
+ * 清除 cookie 用的 Set-Cookie 值。
+ * 注意 Max-Age=0 之外还要把 value 置空：部分浏览器对"只改 Max-Age"的
+ * 删除请求处理不一致，两者都写才可靠。
+ */
+export function createClearCookieHeader(name, secure = false) {
+  const parts = [
+    `${name}=`,
+    'HttpOnly',
+    'Path=/',
+    'SameSite=Strict',
+    'Max-Age=0'
+  ];
+
+  if (secure) {
+    parts.push('Secure');
+  }
+
+  return parts.join('; ');
+}

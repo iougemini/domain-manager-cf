@@ -1,25 +1,35 @@
 {
-  "name": "domain-manager-cf",
-  "version": "1.2.0",
-  "description": "Domain management system based on Cloudflare Workers",
+  "name": "dsmc",
+  "version": "2.7.0",
+  "description": "DSMC - Domain Status Manager for Cloudflare: 基于 Cloudflare Workers 的域名状态管理系统",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "smoke": "node scripts/smoke.mjs",
+    "bundle": "esbuild src/index.js --bundle --format=esm --platform=browser --target=es2022 --external:cloudflare:sockets --outfile=dist/worker.js --log-level=warning",
+    "preview": "node scripts/render-preview.mjs",
+    "check": "node scripts/check.mjs"
   },
   "dependencies": {
     "itty-router": "^4.0.27"
   },
   "devDependencies": {
+    "esbuild": "^0.17.19",
     "wrangler": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "keywords": [
     "cloudflare-workers",
     "domain-manager",
-    "whois"
+    "domain-status",
+    "whois",
+    "rdap"
   ],
   "author": "",
   "license": "MIT"

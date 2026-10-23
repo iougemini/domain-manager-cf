@@ -36,7 +36,7 @@ export class CustomDomainManager {
     await appState.env.DOMAIN_INFO.put('custom_domains', JSON.stringify(customDomainsData));
   }
 
-  async addDomain(domain, info) {
+  async addDomain(domain, info = {}) {
     // 验证域名格式
     if (!domain || !this.isValidDomain(domain)) {
       throw new Error('域名格式无效');
@@ -49,18 +49,26 @@ export class CustomDomainManager {
 
     const domainInfo = {
       registrar: info.registrar || 'Unknown',
-      registrationDate: info.registrationDate || new Date().toISOString().split('T')[0],
+      // 不再把「添加日期」当成注册日期。以前这么做，查不到真实注册日时会
+      // 显示一个假的今天，而且后续自动更新会认为"已经有值了"而不再覆盖
+      registrationDate: info.registrationDate || 'Unknown',
       expirationDate: info.expirationDate || 'Unknown',
       nameServers: info.nameServers || [],
       status: info.status || 'Active',
       notes: info.notes || '',
+      // 添加时立刻查一次 WHOIS 的结果：ok 表示已写入真实信息，
+      // missing 表示没查到、等用户补填
+      lookupStatus: info.lookupStatus || 'pending',
+      lookupError: info.lookupError || null,
+      dataSource: info.dataSource || null,
+      isPermanent: Boolean(info.isPermanent),
       addedDate: new Date().toISOString(),
       isCustomDomain: true
     };
 
     this.domains.set(domain, domainInfo);
     await this.saveToKV();
-    return true;
+    return domainInfo;
   }
 
   async removeDomain(domain) {

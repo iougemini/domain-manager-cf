@@ -1,188 +1,194 @@
-// Cloudflare API 密钥管理
+// Cloudflare 账户密钥的运行时视图
+//
+// 持久化在 managers/accounts-store.js（KV config:accounts），这里只负责：
+//   - 把账户数组转成带运行态（errorCount / lastUsed）的密钥列表
+//   - 故障熔断：连续失败 3 次自动停用，避免一个失效 Token 拖慢每次刷新
+//   - 增删改查委托给 accounts-store，改完立刻重建列表
+//
+// 注意：这里不再直接读写环境变量。环境变量只作为 accounts-store 的兜底来源，
+// 由 initConfig 统一解析后灌进来，避免"两个地方都能改配置"的混乱。
 
 import { appState } from '../app-state.js';
 import { logger } from '../logger.js';
 import { testCloudflareApi } from '../services/cloudflare.js';
+import {
+  upsertAccount,
+  removeAccount as removeAccountInStore,
+  toggleAccount as toggleAccountInStore,
+  importAccountsFromEnv,
+  resolveAccounts,
+  publicAccount
+} from './accounts-store.js';
+
+const MAX_ERRORS = 3;
 
 export class ApiKeyManager {
   constructor() {
+    /** @type {Array<{id, key, username, label, active, lastUsed, errorCount}>} */
     this.keys = [];
     this.initialized = false;
   }
 
-  // 从环境变量初始化keys
-  initFromEnv() {
-    this.keys = appState.CF_API_KEYS.map((key, index) => ({
-      key,
-      username: appState.USERNAMES[index],
-      active: true,
-      lastUsed: null,
-      errorCount: 0
-    }));
-    logger.info(`ApiKeyManager初始化完成,共${this.keys.length}个API密钥`);
+  /**
+   * 从已解析的账户列表初始化。
+   * @param {Array} accounts initConfig 产出的账户数组
+   */
+  initFromAccounts(accounts) {
+    this.keys = (accounts || [])
+      .filter(item => item && item.token)
+      .map(item => ({
+        id: item.id || '',
+        key: item.token,
+        username: item.username || '未命名账户',
+        label: item.label || item.username || '未命名账户',
+        active: item.enabled !== false,
+        // note 也要带上：编辑表单靠它回填，漏了会在保存时把原有备注清空
+        note: item.note || '',
+        lastUsed: null,
+        errorCount: 0
+      }));
+
+    logger.info('ApiKeyManager初始化完成', { count: this.keys.length });
+    return this.keys;
   }
 
-  async init() {
-    if (!this.initialized) {
-      await this.loadFromKV();
-      this.initialized = true;
-    }
+  /** 兼容旧调用（现在等价于用 appState.accounts 初始化） */
+  initFromEnv() {
+    return this.initFromAccounts(appState.accounts);
+  }
+
+  /** 重新从 KV 载入账户并重建列表 */
+  async reload() {
+    const { accounts } = await resolveAccounts(
+      appState.env ? appState.env.DOMAIN_INFO : null,
+      appState.env
+    );
+    appState.accounts = accounts;
+    this.initFromAccounts(accounts);
+    // 账户变了，CloudflareFetcher 持有的引用也要重建
+    appState.cloudflareFetcher = null;
+    return this.keys;
   }
 
   getActiveKeys() {
-    return this.keys.filter(k => k.active && k.errorCount < 3);
+    return this.keys.filter(k => k.active && k.errorCount < MAX_ERRORS);
   }
 
   markError(key) {
     const keyObj = this.keys.find(k => k.key === key);
-    if (keyObj) {
-      keyObj.errorCount++;
-      if (keyObj.errorCount >= 3) {
-        keyObj.active = false;
-        logger.warn('API Key 已禁用，错误次数过多', { key: key.slice(0, 10) });
-      }
+    if (!keyObj) return;
+    keyObj.errorCount++;
+    if (keyObj.errorCount >= MAX_ERRORS) {
+      keyObj.active = false;
+      logger.warn('API Key 已停用，错误次数过多', { key: String(key).slice(0, 10) });
     }
   }
 
   markSuccess(key) {
     const keyObj = this.keys.find(k => k.key === key);
-    if (keyObj) {
-      keyObj.lastUsed = Date.now();
-      keyObj.errorCount = 0; // 重置错误计数
-    }
+    if (!keyObj) return;
+    keyObj.lastUsed = Date.now();
+    keyObj.errorCount = 0;
   }
 
-  async addApiKey(key, username) {
-    // 测试API密钥是否有效
-    const isValid = await testCloudflareApi(key, username);
-    if (!isValid) {
-      throw new Error('API密钥无效');
+  /* ---------------- 增删改查（写 KV） ---------------- */
+
+  /** 新增账户，会先验证 Token 是否真的能读 Zone 列表 */
+  async addAccount(payload) {
+    const result = await testCloudflareApi(payload.token, payload.username || '新账户');
+    // 老代码这里写的是 `if (!isValid)`，而 testCloudflareApi 返回的是对象，
+    // 永远为真——等于完全没校验。这里必须显式看 .success
+    if (!result.success) {
+      throw new Error('Token 验证失败：' + (result.error || '无法读取 Zone 列表'));
     }
 
-    // 检查是否已存在
-    const exists = this.keys.some(k => k.key === key);
-    if (exists) {
-      throw new Error('API密钥已存在');
-    }
-
-    this.keys.push({
-      key,
-      username,
-      active: true,
-      lastUsed: null,
-      errorCount: 0
-    });
-
-    // 保存到KV存储
-    await this.saveToKV();
-    return true;
+    const created = await upsertAccount(appState.env.DOMAIN_INFO, payload, null);
+    await this.reload();
+    return created;
   }
 
-  async removeApiKey(key) {
-    const index = this.keys.findIndex(k => k.key === key);
-    if (index === -1) {
-      throw new Error('API密钥不存在');
-    }
-
-    this.keys.splice(index, 1);
-    await this.saveToKV();
-    return true;
-  }
-
-  async toggleApiKey(key) {
-    const keyObj = this.keys.find(k => k.key === key);
-    if (!keyObj) {
-      throw new Error('API密钥不存在');
-    }
-
-    keyObj.active = !keyObj.active;
-    if (keyObj.active) {
-      keyObj.errorCount = 0; // 重新启用时重置错误计数
-    }
-
-    await this.saveToKV();
-    return keyObj.active;
-  }
-
-  async saveToKV() {
-    if (!appState.env || !appState.env.DOMAIN_INFO) {
-      logger.error('DOMAIN_INFO KV命名空间未初始化');
-      return;
-    }
-    const apiKeysData = {
-      keys: this.keys,
-      lastUpdated: Date.now()
-    };
-    await appState.env.DOMAIN_INFO.put('cf_api_keys', JSON.stringify(apiKeysData));
-  }
-
-  async loadFromKV() {
-    if (!appState.env || !appState.env.DOMAIN_INFO) {
-      logger.error('DOMAIN_INFO KV命名空间未初始化');
-      return;
-    }
-    try {
-      const data = await appState.env.DOMAIN_INFO.get('cf_api_keys');
-      if (data) {
-        const parsed = JSON.parse(data);
-        if (parsed.keys && parsed.keys.length > 0) {
-          // 检查KV中的数据是否包含fallback用户名(表示是旧数据)
-          const hasFallbackUsernames = parsed.keys.some(k =>
-            k.username && k.username.includes('cloudflare username')
-          );
-
-          if (hasFallbackUsernames) {
-            logger.warn('KV中包含fallback用户名(旧数据),忽略KV数据,使用环境变量');
-            return;
-          }
-
-          this.keys = parsed.keys;
-          logger.info('从KV加载API密钥配置(覆盖环境变量)');
-        }
-      } else {
-        logger.info('KV中无API密钥配置,使用环境变量');
+  /** 更新账户；token 留空表示不修改 */
+  async updateAccount(id, payload) {
+    if (payload && payload.token) {
+      const result = await testCloudflareApi(payload.token, payload.username || '账户');
+      if (!result.success) {
+        throw new Error('Token 验证失败：' + (result.error || '无法读取 Zone 列表'));
       }
-    } catch (error) {
-      logger.error('加载API密钥失败', { error: error.message });
     }
+
+    const updated = await upsertAccount(appState.env.DOMAIN_INFO, payload, id);
+    await this.reload();
+    return updated;
   }
 
-  getAllKeys() {
+  async removeAccount(id) {
+    await removeAccountInStore(appState.env.DOMAIN_INFO, id);
+    await this.reload();
+    return true;
+  }
+
+  async toggleAccount(id) {
+    const active = await toggleAccountInStore(appState.env.DOMAIN_INFO, id);
+    await this.reload();
+    return active;
+  }
+
+  async importFromEnv() {
+    const result = await importAccountsFromEnv(appState.env.DOMAIN_INFO, appState.env);
+    await this.reload();
+    return result;
+  }
+
+  /** 单独测一个账户的连通性 */
+  async testAccount(id) {
+    const keyObj = this.keys.find(k => k.id === id);
+    if (!keyObj) throw new Error('账户不存在，可能已被删除');
+    const result = await testCloudflareApi(keyObj.key, keyObj.username);
+    return {
+      ok: result.success,
+      error: result.error || null,
+      username: keyObj.username
+    };
+  }
+
+  /** 逐个测试全部账户 */
+  async testAll() {
+    const results = [];
+    for (const keyObj of this.keys) {
+      const result = await testCloudflareApi(keyObj.key, keyObj.username);
+      results.push({
+        id: keyObj.id,
+        username: keyObj.username,
+        label: keyObj.label,
+        ok: result.success,
+        error: result.error || null,
+        active: keyObj.active,
+        errorCount: keyObj.errorCount
+      });
+    }
+    return results;
+  }
+
+  /**
+   * 供接口返回的账户列表。
+   * 只回掩码，完整 Token 永远不出后端。
+   */
+  getAllAccounts() {
     return this.keys.map(k => ({
-      ...k,
-      key: k.key.slice(0, 8) + '...' + k.key.slice(-8) // 隐藏密钥中间部分
+      id: k.id,
+      label: k.label,
+      username: k.username,
+      tokenMasked: publicAccount({ token: k.key }).tokenMasked,
+      active: k.active,
+      errorCount: k.errorCount,
+      lastUsed: k.lastUsed,
+      // note 必须带上：编辑表单靠它回填，漏了就会在保存时把原有备注清空
+      note: k.note || ''
     }));
   }
 
-  // 清除KV中的旧数据(包含fallback用户名的数据)
-  async clearOldKVData() {
-    if (!appState.env || !appState.env.DOMAIN_INFO) {
-      logger.error('DOMAIN_INFO KV命名空间未初始化');
-      return false;
-    }
-    try {
-      const data = await appState.env.DOMAIN_INFO.get('cf_api_keys');
-      if (data) {
-        const parsed = JSON.parse(data);
-        const hasFallbackUsernames = parsed.keys && parsed.keys.some(k =>
-          k.username && k.username.includes('cloudflare username')
-        );
-
-        if (hasFallbackUsernames) {
-          await appState.env.DOMAIN_INFO.delete('cf_api_keys');
-          logger.info('已清除KV中的旧API密钥数据');
-          return true;
-        } else {
-          logger.info('KV中没有旧数据');
-          return false;
-        }
-      } else {
-        logger.info('KV中没有API密钥数据');
-        return false;
-      }
-    } catch (error) {
-      logger.error('清除KV旧数据失败', { error: error.message });
-      return false;
-    }
+  /** 兼容旧接口名 */
+  getAllKeys() {
+    return this.getAllAccounts();
   }
 }
