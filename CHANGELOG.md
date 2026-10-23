@@ -56,6 +56,13 @@
 
 ### 文档与仓库
 
+- 🏷️ **仓库更名 DSMC** - GitHub 仓库改为 `iougemini/DSMC`。README 新增「关于项目名称」
+  一节说明更名由来；页脚与「关于」页的仓库链接同步更新。`wrangler.toml` 里的 Worker
+  名称仍是 `domain-manager` —— 改它等于新建 Worker，绑定与自定义域名全要重来
+- 🖼️ **README 图标改用 `logo.svg`** - 原来在 README 里内联 `<svg>`，GitHub 的 HTML
+  过滤会把 `<path>` / `<rect>` 全部剥掉，页面上只剩一个 ✓。改为 `<img src="./logo.svg">`；
+  `logo.svg` 同时重绘为与登录页 favicon 同一枚图形（渐变圆角方块 + 白色盾牌对勾）
+
 - 📚 **设计说明进仓库** - v2.2–v2.7 的设计推导从本地 `design/` 移入 `docs/design/`，
   CHANGELOG 里的引用不再指向仓库外的文件
 - 🔒 **`wrangler.toml` 不进仓库** - 仓库只保留 `wrangler.toml.example`。

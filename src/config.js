@@ -11,7 +11,7 @@ export const PROJECT = {
   NAME: 'DSMC',
   FULL_NAME: 'Domain Status Manager for Cloudflare',
   DESCRIPTION: '基于 Cloudflare Workers 的域名状态管理系统',
-  GITHUB: 'https://github.com/iougemini/domain-manager-cf',
+  GITHUB: 'https://github.com/iougemini/DSMC',
   COMMUNITY: 'https://niege.app',
   WECHAT: 'niepantea',
   LICENSE: 'MIT'

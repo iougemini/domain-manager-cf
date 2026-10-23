@@ -262,7 +262,7 @@ check('管理页与登录页都渲染出统一页脚', async () => {
     assert.match(html, /Powered by DSMC/, label + ' 页脚缺 Powered by');
     assert.match(html, /Domain Status Manager for Cloudflare/, label + ' 页脚缺全名');
     assert.match(html, /href="https:\/\/niege\.app"/, label + ' 版权没有链到交流区');
-    assert.match(html, /href="https:\/\/github\.com\/iougemini\/domain-manager-cf"/, label + ' 没有链到仓库');
+    assert.match(html, /href="https:\/\/github\.com\/iougemini\/DSMC"/, label + ' 没有链到仓库');
   }
 });
 

@@ -2,26 +2,7 @@
 
 <div align="center">
 
-<svg width="150" height="150" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#357ABD;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-  <path d="M50 10 L80 20 L80 45 Q80 70 50 90 Q20 70 20 45 L20 20 Z"
-        fill="url(#shieldGradient)"
-        stroke="#2C5F8D"
-        stroke-width="2"/>
-  <path d="M50 25 L65 32 L65 48 Q65 62 50 75 Q35 62 35 48 L35 32 Z"
-        fill="#ffffff"
-        opacity="0.3"/>
-  <text x="50" y="58"
-        font-size="28"
-        font-weight="bold"
-        text-anchor="middle"
-        fill="#ffffff">✓</text>
-</svg>
+<img src="./logo.svg" width="120" height="120" alt="DSMC — Domain Status Manager for Cloudflare">
 
 --- 
 ![Version](https://img.shields.io/badge/version-2.7.0-blue.svg)
@@ -40,6 +21,7 @@
 
 ## 📋 目录
 
+- [关于项目名称](#关于项目名称)
 - [功能特性](#功能特性)
 - [技术架构](#技术架构)
 - [快速开始](#快速开始)
@@ -50,6 +32,26 @@
 - [更新日志](#更新日志)
 - [贡献指南](#贡献指南)
 - [许可证](#许可证)
+
+---
+
+## 关于项目名称
+
+**从 v2.0 版本开始，本项目正式更名为 DSMC（Domain Status Manager for Cloudflare）。**
+
+| 阶段 | 名称 | 形态 |
+|---|---|---|
+| v1 及更早 | `domain-manager` | 单文件 `workers.js`，5841 行 |
+| v2.0 起 | **DSMC** | 模块化架构，`src/` 下按职责分层 |
+
+更名的由来：这个项目最初只做「把域名列出来、告诉你什么时候到期」，叫 `domain-manager`
+还算贴切。但随着巡检、通知、免费域名识别这些能力加进来，它真正管的是**状态**——
+域名还能不能用、解析有没有丢、注册局有没有把解析停掉、证书和续费还有多久。
+「状态」比「管理」更接近它现在做的事，于是 v2.0 定了 DSMC 这个名字。
+
+更名不影响已部署的实例：`wrangler.toml` 里的 Worker 名称保持 `domain-manager` 没有改，
+KV 命名空间与自定义域名都照旧。**改 Worker 名称等于新建一个 Worker**，绑定与域名全部要重来，
+所以仓库名变了、部署名不变是有意为之。
 
 ---
 
@@ -147,8 +149,8 @@
 
 1. **克隆本仓库**
    ```bash
-   git clone https://github.com/iougemini/domain-manager-cf.git
-   cd domain-manager-cf
+   git clone https://github.com/iougemini/DSMC.git
+   cd DSMC
    ```
 2. **安装依赖**
    ```bash
@@ -180,8 +182,8 @@
 ### 快速部署（Wrangler CLI）
 
 ```bash
-git clone https://github.com/iougemini/domain-manager-cf.git
-cd domain-manager-cf
+git clone https://github.com/iougemini/DSMC.git
+cd DSMC
 npm install
 cp wrangler.toml.example wrangler.toml
 wrangler kv:namespace create "DOMAIN_INFO"   # 记录返回的 ID
@@ -660,8 +662,8 @@ npm run preview   # 渲染静态预览页，产物在上级目录 design/preview
 
 ## 📮 联系方式
 
-- **问题反馈**: [GitHub Issues](https://github.com/iougemini/domain-manager-cf/issues)
-- **功能建议**: [GitHub Discussions](https://github.com/iougemini/domain-manager-cf/discussions)
+- **问题反馈**: [GitHub Issues](https://github.com/iougemini/DSMC/issues)
+- **功能建议**: [GitHub Discussions](https://github.com/iougemini/DSMC/discussions)
 
 ---
 

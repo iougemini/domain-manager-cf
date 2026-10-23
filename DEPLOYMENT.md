@@ -35,8 +35,8 @@ wrangler login
 ### 步骤 3: 克隆项目并安装依赖
 
 ```bash
-git clone https://github.com/iougemini/domain-manager-cf.git
-cd domain-manager-cf
+git clone https://github.com/iougemini/DSMC.git
+cd DSMC
 npm install
 ```
 
